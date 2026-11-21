@@ -19,11 +19,14 @@ import (
 // TODO: Тут сильная наркомания получилась. Нужно немного переделать
 // Всё в бардак превратилось
 const (
-	PathDir                         = "files/proxy"
-	FilePathRaw                     = PathDir + "/raw.txt"
-	FilePathValid                   = PathDir + "/valid.txt"
-	FilePathInvalid                 = PathDir + "/invalid.txt"
-	FileDownloadedRawFromSourceSite = PathDir + "/git.txt"
+	PathDir         = ""
+	FilePathRaw     = PathDir + "/raw.txt"
+	FilePathValid   = PathDir + "/valid.txt"
+	FilePathInvalid = PathDir + "/invalid.txt"
+
+	FileDownloadedRawFromSourceSite = PathDir + "/source.txt"  // тут хранятся полученные прокси из одного источника
+	FileSources                     = PathDir + "/sources.txt" // тут хранятся списки источников с проксями
+	// я сначала пдумал что у меня шиза и я одно и тоеж 2 раза написал.
 
 	DirPermissions = 0755
 
@@ -67,44 +70,42 @@ func NewManager() *Manager {
 	return p
 }
 
-func (m *Manager) SetRawFilePath(path string) {
-	m.rawFilePath = path
-}
-
-func (m *Manager) GetRawFilePath() string {
-	if m.rawFilePath != "" {
-		return m.rawFilePath
-	}
-
-	return FilePathRaw
-}
-
-func (m *Manager) SetClient(c HttpClient) {
-	m.client = c
-}
-
 func (m *Manager) UpdateProxiesFromSourceSite() {
+	m.Logger.Info("Скачиваем файл с гитхаба.")
 	_ = os.Remove(FileDownloadedRawFromSourceSite)
 	_ = os.Remove(FilePathInvalid)
 	_ = os.Remove(FilePathValid)
 	_ = os.Remove(FilePathRaw)
 	// плеватюшки
-	m.Logger.Info("Скачиваем файл с гитхаба.")
-	m.DownloadProxiesFromSourceSite()
-	err := os.Rename(FileDownloadedRawFromSourceSite, FilePathRaw)
-	if err != nil {
-		return
+
+	sources, serr := os.OpenFile(FileSources, os.O_RDONLY|os.O_CREATE, 0644)
+	if serr != nil {
+		m.Logger.Fail(serr.Error())
 	}
-	m.Logger.Info("Начинаем проверку прокси серверов.")
-	m.ProcessRawFile()
+	defer sources.Close()
+	sourcesScanner := bufio.NewScanner(sources)
+
+	for sourcesScanner.Scan() {
+		source := sourcesScanner.Text()
+		m.DownloadProxiesFromSourceSite(source)
+		// до этого момента всё, что происходит, происходи с файлом source.txt
+		err := os.Rename(FileDownloadedRawFromSourceSite, FilePathRaw)
+		if err != nil {
+
+			panic(err)
+		}
+
+		m.Logger.Info("Начинаем проверку прокси серверов.")
+		m.ProcessRawFile()
+	}
 }
 
-func (m *Manager) DownloadProxiesFromSourceSite() {
+func (m *Manager) DownloadProxiesFromSourceSite(link string) {
 	m.Logger.Info("Начали скачивать файл со списком прокси с гитхаба.")
 	var err error
 	var resp *http.Response
 	c := http.Client{}
-	resp, err = c.Get(LinkGithubRaw)
+	resp, err = c.Get(link)
 	defer resp.Body.Close()
 	if err != nil {
 		m.Logger.Fail(fmt.Sprintf("при скачивании списка прокси произошла ошибка: %s", err))
@@ -227,6 +228,8 @@ func rawProxiesProducer(ctx context.Context, proxyRawCh chan<- string) {
 	defer rawFile.Close()
 	rawScanner := bufio.NewScanner(rawFile)
 	for rawScanner.Scan() {
+		// Можно конечно сделать асинхронщину и здесь, но думаю просто все ресурсы пройти последовательно, всё
+		// равно сам список проксей проверяется конкурентно. На данный момент это будет как по воробьям из пушки.
 		proxy := rawScanner.Text()
 		select {
 		case <-ctx.Done():
@@ -328,23 +331,6 @@ func (m *Manager) ProcessRawFile() {
 
 	fmt.Printf("Прошло времени с момента запуска %d \n", time.Since(timeNow)/time.Second)
 }
-
-func (m *Manager) rawIpsProducer(rawIpChan chan<- string) {
-	rawFile, err := os.OpenFile(FilePathRaw, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		m.Logger.Fail(err.Error())
-		return
-	}
-	defer rawFile.Close()
-	scan := bufio.NewScanner(rawFile)
-	for scan.Scan() {
-		proxy := scan.Text()
-		rawIpChan <- proxy
-	}
-
-	close(rawIpChan)
-}
-
 func (m *Manager) GetRawProxyCount() int {
 	return getLinesCount(FilePathRaw) // FilePathRaw
 }

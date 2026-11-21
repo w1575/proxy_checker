@@ -1,2 +1,7 @@
 .idea
-proxy_checker
+/proxy_checker
+/proxy_checker.exe
+/raw.txt
+/valid.txt
+/invalid.txt
+/sourcesses.txt
