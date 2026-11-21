@@ -16,7 +16,7 @@
 - Добавить возможность парсить отдельно исходники в разных форматах (оригинал был расчитан на [`all-proxies.txt`](https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/all-proxies.txt?utm_source=chatgpt.com)). Чтобы была возможность указывать в каком формате данный источник. Или... автоматом??
 
 ## Сборка
-Только одно требование - установлен Golang ни ниже 1.22.
+Только одно требование - установлен Golang ни ниже **01.27.х**.
 Для быстрой сборки - выполняем команду "make" в терминале. Если утилиты make нет - выполняем команду для своей операционной системы из файла Makefile.
 После этого в проекте создастся директория build в которой будут 4 файла - raw.txt,  valid.txt, invalid.txt и proxy_checker(.exe).
 
@@ -38,7 +38,7 @@ One small caveat: many of the proxies listed there, despite being technically fu
 
 ## Building
 
-The only requirement is **Go 1.22 or later**.
+The only requirement is **Go 1.27.x or later**.
 
 For a quick build, simply run `make` in the terminal. If you don't have Make installed, run the appropriate command for your operating system from the `Makefile`.
 

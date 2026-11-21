@@ -169,10 +169,6 @@ func createFile(path string) error {
 	return nil
 }
 
-func (m *Manager) CreateValidFile() error {
-	return createFile(FilePathValid)
-}
-
 // checkAvailability непосредственно проверяет работать прокси или нет
 func (m *Manager) checkAvailability(ctx context.Context, proxy string) (*Data, error) {
 	var err error
