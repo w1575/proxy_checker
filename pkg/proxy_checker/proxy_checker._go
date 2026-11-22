@@ -44,15 +44,17 @@ type Manager struct {
 	validFilePath string
 	Logger Logger // да приложение все больше напоминает франкенштейна
 	client HttpClient
+	__     func(str string) string
 }
 
-func NewManager() *Manager {
+func NewManager(transFn func(str string) string) *Manager {
 	p := &Manager{
 		dirPath:       PathDir,
 		rawFilePath:   FilePathRaw,
 		validFilePath: FilePathValid,
 		Logger:        logger.NewConsoleLogger(),
 		client:        NewCustomClient(),
+		__:            transFn,
 	}
 
 	exist, err := isPathExist(PathDir)
@@ -70,8 +72,10 @@ func NewManager() *Manager {
 	return p
 }
 
-func (m *Manager) UpdateProxiesFromSourceSite() {
-	m.Logger.Info("Скачиваем файл с гитхаба.")
+// UpdateProxiesFromSourceSiteAndProcess непосредственно скачивает данные из источника в raw файл, потом проверяет
+// работоспособность каждого, и записывает их в valid.txt и invalid.txt.
+func (m *Manager) UpdateProxiesFromSourceSiteAndProcess() {
+	m.Logger.Info(m.__("Скачиваем файл с гитхаба."))
 	_ = os.Remove(FileDownloadedRawFromSourceSite)
 	_ = os.Remove(FilePathInvalid)
 	_ = os.Remove(FilePathValid)
@@ -95,20 +99,20 @@ func (m *Manager) UpdateProxiesFromSourceSite() {
 			panic(err)
 		}
 
-		m.Logger.Info("Начинаем проверку прокси серверов.")
-		m.ProcessRawFile()
+		m.Logger.Info(m.__("Начинаем проверку прокси серверов."))
+		m.ProcessRawFile(false) // ну какой смысл каждый раз удалять все их результата.
 	}
 }
 
 func (m *Manager) DownloadProxiesFromSourceSite(link string) {
-	m.Logger.Info("Начали скачивать файл со списком прокси с гитхаба.")
+	m.Logger.Info(m.__("Начали скачивать файл со списком прокси с гитхаба."))
 	var err error
 	var resp *http.Response
 	c := http.Client{}
 	resp, err = c.Get(link)
 	defer resp.Body.Close()
 	if err != nil {
-		m.Logger.Fail(fmt.Sprintf("при скачивании списка прокси произошла ошибка: %s", err))
+		m.Logger.Fail(fmt.Sprintf(m.__("при скачивании списка прокси произошла ошибка: %s"), err))
 		return
 	}
 	respScanner := bufio.NewScanner(resp.Body)
@@ -116,7 +120,7 @@ func (m *Manager) DownloadProxiesFromSourceSite(link string) {
 	var writeToFile *os.File
 	writeToFile, err = os.OpenFile(FileDownloadedRawFromSourceSite, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		m.Logger.Fail(fmt.Sprintf("при скачивании списка прокси произошла ошибка: %s", err))
+		m.Logger.Fail(fmt.Sprintf(m.__("при скачивании списка прокси произошла ошибка: %s"), err))
 		return
 	}
 
@@ -125,7 +129,7 @@ func (m *Manager) DownloadProxiesFromSourceSite(link string) {
 		proxyRaw := respScanner.Text() + "\n"
 		_, err = writeToFile.WriteString(proxyRaw)
 		if err != nil {
-			m.Logger.Fail(fmt.Sprintf("При записи прокси в файл произошла ошибка: %s", err))
+			m.Logger.Fail(fmt.Sprintf(m.__("При записи прокси в файл произошла ошибка: %s"), err))
 			return
 		}
 	}
@@ -158,17 +162,6 @@ func (m *Manager) isPathExist() (bool, error) {
 	return isPathExist(m.dirPath)
 }
 
-func createFile(path string) error {
-	f, err := os.Create(path)
-	defer f.Close()
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // checkAvailability непосредственно проверяет работать прокси или нет
 func (m *Manager) checkAvailability(ctx context.Context, proxy string) (*Data, error) {
 	var err error
@@ -198,10 +191,10 @@ func (m *Manager) checkAvailability(ctx context.Context, proxy string) (*Data, e
 	client.CloseIdleConnections()
 
 	if !strings.Contains(body, d.IP) {
-		err = fmt.Errorf("увы, получен скорее всего пустой ответ")
+		err = fmt.Errorf(m.__("увы, получен скорее всего пустой ответ"))
 	}
 
-	m.Logger.Info(fmt.Sprintf("Получили ответ от API %s", body))
+	m.Logger.Info(fmt.Sprintf(m.__("Получили ответ от API %s"), body))
 
 	return d, err
 }
@@ -216,10 +209,10 @@ func (i IsProxyValid) String() string {
 	return fmt.Sprintf("IP: %s, VALID: %t", i.proxy, i.valid)
 }
 
-func rawProxiesProducer(ctx context.Context, proxyRawCh chan<- string) {
+func (m *Manager) rawProxiesProducer(ctx context.Context, proxyRawCh chan<- string) {
 	rawFile, err := os.OpenFile(FilePathRaw, os.O_RDONLY, 0644)
 	if err != nil {
-		panic("Raw file не удалось открыть")
+		panic(m.__("Raw file не удалось открыть"))
 	}
 	defer rawFile.Close()
 	rawScanner := bufio.NewScanner(rawFile)
@@ -266,7 +259,7 @@ func (m *Manager) proxiesChecker(
 	}
 }
 
-func (m *Manager) ProcessRawFile() {
+func (m *Manager) ProcessRawFile(clearResultFiles bool) {
 	timeNow := time.Now()
 	var err error
 
@@ -276,7 +269,7 @@ func (m *Manager) ProcessRawFile() {
 
 	resultsChan := make(chan IsProxyValid, DefaultThreads)
 
-	go rawProxiesProducer(ctx, proxyRawCh) // запустили продюсера
+	go m.rawProxiesProducer(ctx, proxyRawCh) // запустили продюсера
 
 	workersWG := sync.WaitGroup{}
 	workersWG.Add(DefaultThreads)
@@ -285,20 +278,22 @@ func (m *Manager) ProcessRawFile() {
 		go func() {
 			m.proxiesChecker(ctx, proxyRawCh, resultsChan)
 			workersWG.Done()
-		}() // небольшой велосипед для того, чтобы можно было ниже понять, когда зыкрывать канал
+		}()
 	}
 
-	// я выше хотел сделать вейтгруп, даже загрузился. но тут подумал, а можно же просто подождать
-	// закрытие канала. ЕСЛИ ЧЕСТНО Я УЖЕ НИ В ЧЕМ НЕ УВЕРЕН!
+	opMode := os.O_WRONLY | os.O_CREATE
+	if clearResultFiles {
+		opMode = opMode | os.O_TRUNC
+	}
 
-	invalidFile, err := os.OpenFile(FilePathInvalid, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
+	invalidFile, err := os.OpenFile(FilePathInvalid, opMode, 0644)
 	if err != nil {
 		panic(err) // TODO: сделать обработку ошибки
 	}
 
 	defer invalidFile.Close()
 
-	validFile, err := os.OpenFile(FilePathValid, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
+	validFile, err := os.OpenFile(FilePathValid, opMode, 0644)
 	if err != nil {
 		panic(err) // TODO: сделать обработку ошибки
 	}
@@ -325,7 +320,7 @@ func (m *Manager) ProcessRawFile() {
 	close(resultsChan)
 	consWG.Wait()
 
-	fmt.Printf("Прошло времени с момента запуска %d \n", time.Since(timeNow)/time.Second)
+	fmt.Printf(m.__("Прошло времени с момента запуска %d \n"), time.Since(timeNow)/time.Second)
 }
 func (m *Manager) GetRawProxyCount() int {
 	return getLinesCount(FilePathRaw) // FilePathRaw
