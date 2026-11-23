@@ -1,7 +1,6 @@
 package proxy_checker
 
 import (
-	"context"
 	"crypto/tls"
 	"io"
 	"net/http"
@@ -16,19 +15,9 @@ func NewCustomClient() *CustomClient {
 	c := CustomClient{
 		//Transport: &http.Transport{}
 	}
-	c.Timeout = DefaultTimeout
+	c.Timeout = DefaultResponseTimeoutInSeconds
 
 	return &c
-}
-
-func (c *CustomClient) DoWithContext(ctx context.Context, req *http.Request) (string, error) {
-	//TODO implement me
-	return "", nil
-}
-
-func (c *CustomClient) DoAndReturnBodyWithContext(ctx context.Context, r *http.Request) (string, error) {
-	// TODO: implement me
-	return "", nil
 }
 
 func (c *CustomClient) DoAndReturnBody(r *http.Request) (string, error) {

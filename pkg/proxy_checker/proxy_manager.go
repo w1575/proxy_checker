@@ -2,8 +2,11 @@ package proxy_checker
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -12,8 +15,11 @@ const (
 	DefaultThreads                  = 128
 	DefaultResponseTimeoutInSeconds = 2
 
-	FilesBasePath = ""
-	FilePathRaw   = FilesBasePath + "/raw.txt"
+	FilesBasePath       = ""
+	FilePathRaw         = FilesBasePath + "/raw.txt"
+	FilePathValid       = FilesBasePath + "/valid.txt"
+	FilePathInvalid     = FilesBasePath + "/invalid.txt"
+	DefaultIpCheckerAPI = "https://api.ipify.org?format=json"
 )
 
 type i18nFn = func(s string) string
@@ -53,6 +59,11 @@ func (p *ProxyManager) ProcessProxiesFile(filePath string) {
 	// зафиксировали время старта
 	startTime := time.Now()
 
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+	defer cancel()
+
 	// продюсер читает прокси из файла
 	// продюсер отправляет прокси в канал rawProxy
 	sourceHandler, handlerErr := os.OpenFile(filePath, os.O_RDONLY, 0644)
@@ -65,7 +76,7 @@ func (p *ProxyManager) ProcessProxiesFile(filePath string) {
 
 	producerWg := sync.WaitGroup{}
 	producerWg.Go(func() {
-		p.rawProxyProducer(sourceHandler, rawProxyChannel)
+		p.rawProxyProducer(ctx, sourceHandler, rawProxyChannel)
 	})
 
 	// worker принимает данные из канала rawProxy
@@ -76,7 +87,7 @@ func (p *ProxyManager) ProcessProxiesFile(filePath string) {
 
 	for range DefaultThreads {
 		go func() {
-			p.proxyChecker(rawProxyChannel, processedProxyCh)
+			p.proxyChecker(ctx, rawProxyChannel, processedProxyCh)
 			processersWg.Done()
 		}()
 	}
@@ -84,7 +95,7 @@ func (p *ProxyManager) ProcessProxiesFile(filePath string) {
 	// ну и consumer-writer записывает данные в резудьтирующий файл
 	resultWriterWG := sync.WaitGroup{}
 	resultWriterWG.Go(func() {
-		p.resultsWriter(processedProxyCh)
+		p.resultsWriter(ctx, processedProxyCh)
 	})
 
 	producerWg.Wait()       // продюсер асинхронно выполняется, поэтому ждем пока что он завершится
@@ -97,20 +108,122 @@ func (p *ProxyManager) ProcessProxiesFile(filePath string) {
 		fmt.Sprintf("Файл со списком прокси был обработан за %v", time.Since(startTime)*time.Second))
 }
 
-func (p *ProxyManager) rawProxyProducer(fileHandler *os.File, rawChan chan<- string) {
+func (p *ProxyManager) rawProxyProducer(
+	ctx context.Context,
+	fileHandler *os.File,
+	rawChan chan<- string,
+) {
 	sc := bufio.NewScanner(fileHandler)
+	defer close(rawChan)
 	for sc.Scan() {
-		txt := sc.Text()
-		rawChan <- txt
+		select {
+		case <-ctx.Done():
+			p.logger.Fail(ctx.Err().Error())
+			return
+		case rawChan <- sc.Text():
+		}
 	}
 	close(rawChan)
+	return
 }
 
-func (p *ProxyManager) proxyChecker(inChan <-chan string, outChan chan<- proxyCheckResult) {
+func (p *ProxyManager) proxyChecker(
+	ctx context.Context,
+	inChan <-chan string,
+	outChan chan<- proxyCheckResult,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+		case proxyRaw := <-inChan:
+			proxyData, proxyErr := FromString(proxyRaw)
+			if proxyErr != nil {
+				p.logger.Fail(proxyErr.Error())
+				continue
+			} else {
+				func() { // тупо чтобы defer можно было заиспользовать и returnы
+					timeOutCtx, cancel := context.WithTimeout(ctx, time.Second*2)
+					defer cancel()
 
+					req, reqErr := http.NewRequestWithContext(
+						timeOutCtx,
+						http.MethodGet,
+						getIPCheckerURL(),
+						nil,
+					)
+
+					if reqErr != nil {
+						p.logger.Fail(reqErr.Error())
+						return
+					}
+
+					client := NewCustomClient()
+					defer client.CloseIdleConnections()
+					client.SetProxy(proxyRaw)
+					body, err := client.DoAndReturnBody(req)
+					if err != nil {
+						return
+					}
+
+					result := proxyCheckResult{}
+					result.proxyData = *proxyData
+					result.valid = strings.Contains(body, proxyRaw)
+					outChan <- result
+				}()
+			}
+		}
+	}
 }
 
-func (p *ProxyManager) resultsWriter(inChan <-chan proxyCheckResult) {
+func getIPCheckerURL() string {
+	return DefaultIpCheckerAPI
+}
+
+func invalidFilePath() string {
+	return FilePathInvalid
+}
+
+func validFilePath() string {
+	return FilePathInvalid
+}
+
+func (p *ProxyManager) resultsWriter(
+	ctxt context.Context,
+	inChan <-chan proxyCheckResult,
+) {
+	validHandler, errIn := os.OpenFile(validFilePath(), os.O_WRONLY|os.O_CREATE, 0644)
+	if errIn != nil {
+		p.logger.Fail(errIn.Error())
+		return
+	}
+	defer validHandler.Close()
+
+	invalidHandler, errVal := os.OpenFile(invalidFilePath(), os.O_WRONLY|os.O_CREATE, 0644)
+	if errVal != nil {
+		p.logger.Fail(errVal.Error())
+		return
+	}
+
+	defer invalidHandler.Close()
+	for {
+		select {
+		case <-ctxt.Done():
+		case dataToWrite := <-inChan:
+			if dataToWrite.valid {
+				_, err := validHandler.WriteString(dataToWrite.proxyData.String())
+				if err != nil {
+					p.logger.Fail(err.Error())
+					return
+				}
+			} else {
+				_, err := validHandler.WriteString(dataToWrite.proxyData.String())
+				if err != nil {
+					p.logger.Fail(err.Error())
+					return
+				}
+			}
+		}
+	}
 
 }
 
