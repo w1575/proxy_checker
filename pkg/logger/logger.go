@@ -35,3 +35,26 @@ func (logger *ConsoleLogger) Success(data string) {
 func (logger *ConsoleLogger) Close() bool {
 	return true
 }
+
+type NullLogger struct {
+}
+
+func NewNullLogger() *NullLogger {
+	return &NullLogger{}
+}
+
+func (logger *NullLogger) Info(data string) {
+
+}
+
+func (logger *NullLogger) Fail(data string) {
+
+}
+
+func (logger *NullLogger) Warning(data string) {
+
+}
+
+func (logger *NullLogger) Success(data string) {
+
+}
