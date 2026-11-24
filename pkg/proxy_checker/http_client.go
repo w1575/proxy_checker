@@ -20,6 +20,13 @@ func NewCustomClient() *CustomClient {
 	return &c
 }
 
+// CreateClient на самом деле это не похоже на прототип. И это не клон. (клонировать нечего).
+func (c *CustomClient) CreateClient() CreatableHttpClient {
+	return &CustomClient{} // TODO в итоге решил повыпендриваться, а получилось,
+	// что во-первых реализация знает про абстракцию
+	// а во-вторых абстракцию, которая может по логике быть вообще в другом пакете
+}
+
 func (c *CustomClient) DoAndReturnBody(r *http.Request) (string, error) {
 	resp, err := c.Client.Do(r)
 	if err != nil {
