@@ -111,18 +111,18 @@ func (p *PseudoHTTPClient) CreateClient() CreatableHttpClient {
 }
 
 var proxyCheckerDataProvider = map[string]proxyExecData{
-	"http://127.0.0.1:8080": {isValid: true, executeTime: 1},
-	////ваилдный
-	//"http://127.0.0.2:8079": {isValid: false, executeTime: 5},
-	//// не проходит по таймауту
-	//"http//127.0.0.1:800": {isValid: false, executeTime: 1},
-	//// двоеточие
-	//"http://127.0.0:8080": {isValid: false, executeTime: 1},
-	//// последний октет (не помню как правильно )
-	//"http://266.0.0.1:8080": {isValid: false, executeTime: 1},
-	//// за все возмжные рамки приличия выходит
-	//"http://0.0.0.1": {isValid: false, executeTime: 1},
-	//// ой
+	"http://127.0.0.1:8080": {isValid: true, executeTime: DefaultResponseTimeoutInSeconds + 1},
+	//ваилдный
+	"http://127.0.0.2:8079": {isValid: false, executeTime: 5},
+	// не проходит по таймауту
+	"http//127.0.0.1:800": {isValid: false, executeTime: 1},
+	// двоеточие
+	"http://127.0.0:8080": {isValid: false, executeTime: 1},
+	// последний октет (не помню как правильно )
+	"http://266.0.0.1:8080": {isValid: false, executeTime: 1},
+	// за все возмжные рамки приличия выходит
+	"http://0.0.0.1": {isValid: false, executeTime: 1},
+	// ой
 }
 
 func Test_proxyChecker(t *testing.T) {
