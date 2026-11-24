@@ -87,8 +87,10 @@ type proxyExecData struct {
 	executeTime time.Duration
 }
 type PseudoHTTPClient struct {
-	proxiesMap   map[string]proxyExecData
-	currentProxy string
+	proxiesMap      map[string]proxyExecData
+	currentProxy    string
+	responseBody    string
+	responseTimeSec int
 }
 
 func (p *PseudoHTTPClient) CloseIdleConnections() {}
@@ -97,13 +99,21 @@ func (p *PseudoHTTPClient) SetProxy(proxy string) {
 	p.currentProxy = proxy
 }
 
+func (p *PseudoHTTPClient) shouldReturn(response string, responseTimeSec int) {
+	p.responseBody = response
+	p.responseTimeSec = responseTimeSec
+}
+
 func (p *PseudoHTTPClient) DoAndReturnBody(r *http.Request) (string, error) {
 	respData := p.proxiesMap[p.currentProxy]
-	//time.Sleep(respData.executeTime)
+
 	if respData.executeTime > DefaultResponseTimeoutInSeconds {
 		return "", fmt.Errorf("долго ждем, товарищи")
 	}
-	return p.currentProxy, nil
+	if p.responseBody != "" {
+		return p.currentProxy, nil
+	}
+	return "", nil
 }
 
 func (p *PseudoHTTPClient) CreateClient() CreatableHttpClient {
@@ -120,7 +130,7 @@ var proxyCheckerDataProvider = map[string]proxyExecData{
 	"http://127.0.0:8080": {isValid: false, executeTime: 1},
 	// последний октет (не помню как правильно )
 	"http://266.0.0.1:8080": {isValid: false, executeTime: 1},
-	// за все возмжные рамки приличия выходит
+	// за все возможные рамки приличия выходит
 	"http://0.0.0.1": {isValid: false, executeTime: 1},
 	// ой
 }
@@ -151,4 +161,8 @@ func Test_proxyChecker(t *testing.T) {
 			t.Errorf("Ожидалось, что %s будет %t", proxyRaw, expectation)
 		}
 	}
+}
+
+func Test_DownloadProxiesFromSources(t *testing.T) {
+
 }

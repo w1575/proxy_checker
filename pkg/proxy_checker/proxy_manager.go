@@ -15,10 +15,12 @@ const (
 	DefaultThreads                  = 128
 	DefaultResponseTimeoutInSeconds = 2
 
-	FilesBasePath       = ""
-	FilePathRaw         = FilesBasePath + "/raw.txt"
-	FilePathValid       = FilesBasePath + "/valid.txt"
-	FilePathInvalid     = FilesBasePath + "/invalid.txt"
+	FilesBasePath   = ""
+	FilePathRaw     = FilesBasePath + "/raw.txt"
+	FilePathValid   = FilesBasePath + "/valid.txt"
+	FilePathInvalid = FilesBasePath + "/invalid.txt"
+	FilePathSources = FilesBasePath + "sources.txt"
+
 	DefaultIpCheckerAPI = "https://api.ipify.org?format=json"
 )
 
@@ -71,7 +73,7 @@ type Logger interface {
 	Fail(message string)
 }
 
-// ProcessProxiesFile проверяет данный ему файл, который содержит данные прокси серверов.
+// ProcessProxiesFile проверяет данный ему файл, который содержит необработанные данные прокси серверов.
 func (p *ProxyManager) ProcessProxiesFile(filePath string) {
 	// зафиксировали время старта
 	startTime := time.Now()
@@ -200,7 +202,7 @@ func getIPCheckerURL() string {
 }
 
 func invalidFilePath() string {
-	return FilePathInvalid
+	return FilePathValid
 }
 
 func validFilePath() string {
@@ -244,14 +246,70 @@ func (p *ProxyManager) resultsWriter(
 			}
 		}
 	}
-
 }
 
-func (p *ProxyManager) DownloadProxiesFromSources() {
-
+// sourcesPath получение путя к файлу в котором все источники находятся.
+func (p *ProxyManager) sourcesPath() string {
+	return FilePathSources
+}
+func (p *ProxyManager) rwPath() string {
+	return FilePathRaw
 }
 
-func (p *ProxyManager) DownloadProxiesFromSourcesAndProcesses() {
+// DownloadProxiesFromSourcesToRawFile просто скачивает данные проксей из всех источников в RAW файл
+func (p *ProxyManager) DownloadProxiesFromSourcesToRawFile(truncateRawFile bool) error {
+	var (
+		err                         error
+		rawFileHandler, fileHandler *os.File
+	)
+	fileHandler, err = os.OpenFile(p.sourcesPath(), os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	defer fileHandler.Close()
+
+	fileMode := os.O_WRONLY | os.O_CREATE
+
+	if truncateRawFile {
+		fileMode += os.O_TRUNC
+	}
+
+	rawFileHandler, err = os.OpenFile(p.rwPath(), fileMode, 0644)
+
+	if err != nil {
+		return err
+	}
+	defer rawFileHandler.Close()
+
+	sourcesScan := bufio.NewScanner(fileHandler)
+	for sourcesScan.Scan() {
+		var localErr error
+
+		sourceLink := sourcesScan.Text()
+		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		req, localErr := http.NewRequestWithContext(ctx, http.MethodGet, sourceLink, nil)
+		if localErr != nil {
+			return localErr
+		}
+		body, localErr := p.httpClient.DoAndReturnBody(req)
+		if localErr != nil {
+			return localErr
+		}
+
+		_, localErr = rawFileHandler.WriteString(body)
+		if localErr != nil {
+			return localErr
+		}
+	}
+
+	return err
+}
+
+func (p *ProxyManager) DownloadProxiesFromSourcesFileAndProcesses() {
 
 }
 
