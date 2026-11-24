@@ -28,15 +28,32 @@ type ProxyManager struct {
 	validAndInvalidAppend bool // true сохраняет старые данные IP адресов в valid и invalid  файлах
 	__                    i18nFn
 	logger                Logger
+	httpClient            CreatableHttpClient
 }
 
 func NewProxyManager() *ProxyManager {
-	return &ProxyManager{}
+	c := NewCustomClient()
+	return &ProxyManager{
+		httpClient: c,
+	}
+}
+
+// AYYY LAMAO
+type CreatableHttpClient interface {
+	CloseIdleConnections()
+	SetProxy(poxyRaw string)
+	DoAndReturnBody(r *http.Request) (string, error)
+	CreateClient() CreatableHttpClient
 }
 
 type ProxyManagerSettings struct {
 	__ i18nFn // функция-перевода
 }
+
+//// CreateClient "создает" новый клиент. По факту это клон. Но не важно
+//func (p *ProxyManager) CreateClient() HttpClient {
+//	return p.httpClient
+//}
 
 func (p *ProxyManager) SetValidAndInvalidAppend(v bool) {
 	p.validAndInvalidAppend = v
@@ -123,7 +140,6 @@ func (p *ProxyManager) rawProxyProducer(
 		case rawChan <- sc.Text():
 		}
 	}
-	close(rawChan)
 	return
 }
 
