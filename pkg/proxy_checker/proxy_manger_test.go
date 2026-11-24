@@ -2,8 +2,12 @@ package proxy_checker
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
+	"proxy_checker/pkg/logger"
 	"testing"
+	"time"
 )
 
 func Test_ProxyFactoryJustWorks(t *testing.T) {
@@ -73,6 +77,78 @@ func Test_rawProxyProducer(t *testing.T) {
 		_, ok := processTestFileDataProvider[line]
 		if !ok {
 			t.Errorf("по какой-то причине прокси %s нет в списке", line)
+		}
+	}
+}
+
+// Она хранит ожидание - валидный прокси или нет, и время выполнения (тестирование таймаута)
+type proxyExecData struct {
+	isValid     bool
+	executeTime time.Duration
+}
+type PseudoHTTPClient struct {
+	proxiesMap   map[string]proxyExecData
+	currentProxy string
+}
+
+func (p *PseudoHTTPClient) CloseIdleConnections() {}
+
+func (p *PseudoHTTPClient) SetProxy(proxy string) {
+	p.currentProxy = proxy
+}
+
+func (p *PseudoHTTPClient) DoAndReturnBody(r *http.Request) (string, error) {
+	respData := p.proxiesMap[p.currentProxy]
+	//time.Sleep(respData.executeTime)
+	if respData.executeTime > DefaultResponseTimeoutInSeconds {
+		return "", fmt.Errorf("долго ждем, товарищи")
+	}
+	return p.currentProxy, nil
+}
+
+func (p *PseudoHTTPClient) CreateClient() CreatableHttpClient {
+	return p
+}
+
+var proxyCheckerDataProvider = map[string]proxyExecData{
+	"http://127.0.0.1:8080": {isValid: true, executeTime: 1},
+	////ваилдный
+	//"http://127.0.0.2:8079": {isValid: false, executeTime: 5},
+	//// не проходит по таймауту
+	//"http//127.0.0.1:800": {isValid: false, executeTime: 1},
+	//// двоеточие
+	//"http://127.0.0:8080": {isValid: false, executeTime: 1},
+	//// последний октет (не помню как правильно )
+	//"http://266.0.0.1:8080": {isValid: false, executeTime: 1},
+	//// за все возмжные рамки приличия выходит
+	//"http://0.0.0.1": {isValid: false, executeTime: 1},
+	//// ой
+}
+
+func Test_proxyChecker(t *testing.T) {
+	client := &PseudoHTTPClient{}
+	client.proxiesMap = proxyCheckerDataProvider
+
+	inChan := make(chan string, len(proxyCheckerDataProvider))
+	outChan := make(chan proxyCheckResult, len(proxyCheckerDataProvider))
+
+	p := NewProxyManager()
+	p.httpClient = client
+	//p.logger = logger.NewConsoleLogger()
+	p.logger = logger.NewNullLogger()
+	bgCtxt := context.Background()
+	//ctx, cancel := context.WithTimeout(bgCtxt, time.Second*DefaultResponseTimeoutInSeconds)
+	//defer cancel()
+	for ip, _ := range proxyCheckerDataProvider {
+		inChan <- ip
+	}
+	close(inChan)
+	p.proxyChecker(bgCtxt, inChan, outChan)
+	for result := range outChan {
+		proxyRaw := result.proxyData.String()
+		expectation := proxyCheckerDataProvider[proxyRaw].isValid
+		if result.valid != expectation {
+			t.Errorf("Ожидалось, что %s будет %t", proxyRaw, expectation)
 		}
 	}
 }

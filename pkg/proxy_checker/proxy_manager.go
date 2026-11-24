@@ -151,11 +151,15 @@ func (p *ProxyManager) proxyChecker(
 	for {
 		select {
 		case <-ctx.Done():
-		case proxyRaw := <-inChan:
+		case proxyRaw, ok := <-inChan:
+			if !ok {
+				close(outChan)
+				return
+			}
 			proxyData, proxyErr := FromString(proxyRaw)
 			if proxyErr != nil {
 				p.logger.Fail(proxyErr.Error())
-				continue
+				break
 			} else {
 				func() { // тупо чтобы defer можно было заиспользовать и returnы
 					timeOutCtx, cancel := context.WithTimeout(ctx, time.Second*2)
@@ -173,12 +177,12 @@ func (p *ProxyManager) proxyChecker(
 						return
 					}
 
-					client := NewCustomClient()
+					client := p.httpClient.CreateClient()
 					defer client.CloseIdleConnections()
 					client.SetProxy(proxyRaw)
 					body, err := client.DoAndReturnBody(req)
 					if err != nil {
-						return
+						return // ????
 					}
 
 					result := proxyCheckResult{}
