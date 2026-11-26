@@ -11,7 +11,7 @@ import (
 )
 
 func Test_ProxyFactoryJustWorks(t *testing.T) {
-	NewProxyManager()
+	NewProxyManager(ProxyManagerSettings{})
 }
 
 //func Test_HTTPClientCloneJustWorks(t *testing.T) {
@@ -61,7 +61,7 @@ func Test_rawProxyProducer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pm := NewProxyManager()
+	pm := NewProxyManager(ProxyManagerSettings{})
 	ctx := context.Background()
 	fileHandler, handlerErr := os.OpenFile(filePath, os.O_RDONLY, 0644)
 
@@ -142,7 +142,7 @@ func Test_proxyChecker(t *testing.T) {
 	inChan := make(chan string, len(proxyCheckerDataProvider))
 	outChan := make(chan proxyCheckResult, len(proxyCheckerDataProvider))
 
-	p := NewProxyManager()
+	p := NewProxyManager(ProxyManagerSettings{})
 	p.httpClient = client
 	//p.logger = logger.NewConsoleLogger()
 	p.logger = logger.NewNullLogger()

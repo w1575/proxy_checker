@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"proxy_checker/pkg/logger"
 	"proxy_checker/pkg/proxy_checker"
 	"strings"
 )
@@ -29,7 +30,8 @@ func loadSettings() {
 
 func main() {
 	__ := transFn()
-	pm := proxy_checker.NewManager(__)
+	settingsPM := proxy_checker.ProxyManagerSettings{TransFn: __, Logger: logger.NewConsoleLogger()}
+	pm := proxy_checker.NewProxyManager(settingsPM)
 	loadSettings()
 
 	fmt.Println("*******************************************************************")
@@ -46,8 +48,8 @@ func main() {
 
 		fmt.Println(__("Что хотите сделать?"))
 		fmt.Println(__("0. Выход"))
-		fmt.Println(__("1. Проверить raw.txt (все прокси должны быть руками записаны)"))
-		fmt.Println(__("2. Скачать все прокси из файла источников (sourcess.txt -> raw.txt)"))
+		fmt.Println(__("1. Скачать все прокси из файла источников (sourcess.txt -> raw.txt)"))
+		fmt.Println(__("2. Проверить raw.txt (все прокси должны быть руками записаны)"))
 		fmt.Println(__("3. Скачать все прокси из файла источников и автоматически проверить"))
 		//fmt.Println("*******************************************************************")
 		fmt.Print(">>")
@@ -57,16 +59,19 @@ func main() {
 		case "0":
 			break
 		case "1":
-			fmt.Println("Проверяем raw.txt")
-			pm.ProcessRawFile(true)
+			fmt.Println(__("Скачиваем прокси из всех источников в raw.txt"))
+			err := pm.DownloadProxiesFromSourcesToRawFile(true)
+			if err != nil {
+				fmt.Println(err)
+			}
 		case "2":
-			fmt.Println("Еще не реализовано")
-			//fmt.Println("Качаем данные из sourcess.txt")
-			//pm.UpdateProxiesFromSourceSite()
+			fmt.Println(__("Проверяем raw.txt"))
+			pm.ProcessProxiesFile(proxy_checker.FilePathRaw)
 		case "3":
-			fmt.Println("Качаем данные из всех источников и проверяем их")
+			fmt.Println(__("Качаем данные из всех источников и проверяем их"))
+			pm.DownloadFromSourcesAndProcess()
 		default:
-			fmt.Println("Неправильный ввод")
+			fmt.Println(__("Неправильный ввод"))
 		}
 	}
 

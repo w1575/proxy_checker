@@ -20,8 +20,8 @@ func transFn() func(key string) string {
 var en = map[string]string{
 	"Что хотите сделать?": "What would you like to do?",
 	"0. Выход":            "0. Exit",
-	"1. Проверить raw.txt (все прокси должны быть руками записаны)":       "1. Check raw.txt (all proxies must be entered manually)",
-	"2. Скачать все прокси из файла источников (sourcess.txt -> raw.txt)": "2. Download all proxies from the source file (sources.txt -> raw.txt)",
+	"2. Проверить raw.txt (все прокси должны быть руками записаны)":       "2. Check raw.txt (all proxies must be entered manually)",
+	"1. Скачать все прокси из файла источников (sourcess.txt -> raw.txt)": "1. Download all proxies from the source file (sources.txt -> raw.txt)",
 	"3. Скачать все прокси из файла источников и автоматически проверить": "3. Download all proxies from the source file and check them automatically",
 
 	"Скачиваем файл с гитхаба.":          "Download the file from GitHub.",

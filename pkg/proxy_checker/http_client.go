@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 type CustomClient struct {
@@ -14,8 +15,8 @@ type CustomClient struct {
 func NewCustomClient() *CustomClient {
 	c := CustomClient{
 		//Transport: &http.Transport{}
-	}
-	c.Timeout = DefaultResponseTimeoutInSeconds
+
+		Timeout: DefaultResponseTimeoutInSeconds * time.Second}
 
 	return &c
 }
