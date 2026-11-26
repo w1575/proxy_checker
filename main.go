@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"proxy_checker/pkg/logger"
@@ -28,15 +29,13 @@ func loadSettings() {
 	}
 }
 
+var flashMessage string = ""
+
 func main() {
 	__ := transFn()
 	settingsPM := proxy_checker.ProxyManagerSettings{TransFn: __, Logger: logger.NewConsoleLogger()}
 	pm := proxy_checker.NewProxyManager(settingsPM)
 	loadSettings()
-
-	fmt.Println("*******************************************************************")
-	fmt.Println("************************** PROXY_CHECKER **************************")
-	fmt.Println("*******************************************************************")
 
 	//fmt.Println("Lang ru/en?")
 
@@ -45,6 +44,16 @@ func main() {
 		// Posted by Kavu, modified by community. See post 'Timeline' for change history
 		// Retrieved 2026-11-21, License - CC BY-SA 4.0
 		fmt.Print("\033[H\033[2J")
+		fmt.Println("*******************************************************************")
+		fmt.Println("************************** PROXY_CHECKER **************************")
+		fmt.Println("*******************************************************************")
+
+		if flashMessage != "" {
+			fmt.Println("-------------------------------------------------------------------")
+			fmt.Println(flashMessage)
+			fmt.Println("-------------------------------------------------------------------")
+			flashMessage = ""
+		}
 
 		fmt.Println(__("Что хотите сделать?"))
 		fmt.Println(__("0. Выход"))
@@ -61,14 +70,19 @@ func main() {
 		case "1":
 			fmt.Println(__("Скачиваем прокси из всех источников в raw.txt"))
 			err := pm.DownloadProxiesFromSourcesToRawFile(true)
+			flashMessage = "Скачивание прокси файлов завершено."
 			if err != nil {
 				fmt.Println(err)
 			}
 		case "2":
 			fmt.Println(__("Проверяем raw.txt"))
-			pm.ProcessProxiesFile(proxy_checker.FilePathRaw)
+			ctx, cancel := context.WithCancel(context.Background())
+			pm.ProcessProxiesFile(ctx, proxy_checker.FilePathRaw)
+			cancel()
+			flashMessage = "RAW файл должен быть проверен."
 		case "3":
 			fmt.Println(__("Качаем данные из всех источников и проверяем их"))
+			flashMessage = "RAW обновлен и проверен."
 			pm.DownloadFromSourcesAndProcess()
 		default:
 			fmt.Println(__("Неправильный ввод"))

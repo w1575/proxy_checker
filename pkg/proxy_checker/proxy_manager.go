@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	DefaultThreads                  = 128
+	DefaultThreads                  = 1
 	DefaultResponseTimeoutInSeconds = 2
 
 	FilesBasePath   = ""
@@ -39,6 +39,7 @@ func NewProxyManager(settings ProxyManagerSettings) *ProxyManager {
 	return &ProxyManager{
 		__:         settings.TransFn,
 		httpClient: c,
+		logger:     settings.Logger,
 	}
 }
 
@@ -211,7 +212,8 @@ func (p *ProxyManager) sourceFileHandler(ctx context.Context, path string) (chan
 	sourceWG := &sync.WaitGroup{}
 	//sourceWG.Add(1)
 	sourceWG.Go(func() {
-		defer sourceWG.Done()
+		//defer sourceWG.Done()
+		defer close(outChan)
 		fileHandler, err = os.OpenFile(path, os.O_RDONLY, 0644)
 		if err != nil {
 			p.logger.Fail(err.Error())
@@ -219,11 +221,13 @@ func (p *ProxyManager) sourceFileHandler(ctx context.Context, path string) (chan
 		defer fileHandler.Close()
 		sc := bufio.NewScanner(fileHandler)
 		for sc.Scan() {
+			txt := sc.Text()
 			select {
 			case <-ctx.Done():
-				p.logger.Fail(ctx.Err().Error())
+				//p.logger.Fail(ctx.Err().Error())
 				return
-			case outChan <- sc.Text():
+			case outChan <- txt:
+				//fmt.Println(txt)
 			}
 		}
 	})
@@ -242,7 +246,11 @@ func (p *ProxyManager) rawProxyChecker(ctx context.Context, rawChan <-chan strin
 			select {
 			case <-ctx.Done():
 				return
-			case proxy := <-rawChan:
+			case proxy, isOpen := <-rawChan:
+				// А вот этот момент я упустил. Не знали (или я забыл?!) что он сойдет с ума и будет до посинения "получать" данные пустые
+				if !isOpen {
+					return
+				}
 				proxyData, err := FromString(proxy)
 
 				if err != nil {
@@ -261,14 +269,12 @@ func (p *ProxyManager) rawProxyChecker(ctx context.Context, rawChan <-chan strin
 	return outChan, wg
 }
 
-func (pm *ProxyManager) ProcessProxiesFile(filePath string) {
+func (pm *ProxyManager) ProcessProxiesFile(ctx context.Context, filePath string) {
 	// зафиксировали время старта
-	startTime := time.Now()
+	//startTime := time.Now()
 
-	ctx := context.Background()
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithCancel(ctx)
-	defer cancel()
+	//var cancel context.CancelFunc
+	//defer cancel()
 
 	var (
 		rawProxyChan    chan string
@@ -320,12 +326,14 @@ func (pm *ProxyManager) ProcessProxiesFile(filePath string) {
 		}
 	})
 
-	sourceHandlerWG.Wait()  // дождались продюсерра проксей
-	close(rawProxyChan)     // закрыли его канал
+	sourceHandlerWG.Wait() // дождались продюсерра проксей
+	//close(rawProxyChan)     // закрыли его канал
+
 	checkerWG.Wait()        // подождали все воркеры-чекеры проксей
 	close(checkedProxyChan) // закрыли канал чекеров
-	writerWg.Wait()         // ну записунчик должен будет закрыть по контексту
-	pm.logger.Info(fmt.Sprintf("Файл со списком прокси был обработан за %v", time.Since(startTime)*time.Second))
+	writerWg.Wait()         // ну записунчик должен будет закрыть по контексту поэтому просто подождем если вдруг он
+	// отстает
+	pm.logger.Info("")
 }
 
 func getIPCheckerURL() string {
@@ -445,7 +453,10 @@ func (p *ProxyManager) DownloadFromSourcesAndProcess() {
 	if err != nil {
 		return
 	}
-	p.ProcessProxiesFile(getRawFilePath())
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	p.ProcessProxiesFile(ctx, getRawFilePath())
 }
 
 func getRawFilePath() string {
