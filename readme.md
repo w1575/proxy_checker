@@ -1,45 +1,77 @@
-# Proxy Checker
+# *Proxy Checker (ALPHA VERSION)*
 
-[🇬🇧English](#what-is-it)
+[🇬🇧 English](#what-is-it)
 
-## Что это такое?
+## *Что это такое?*
 
-Небольшая утилита, которая проверяет список прокси из файла raw.txt и записывет валидные прокси в файл valid.txt, а не валидные в invalid.txt соответственно.
-Этот небольшой скрип появился из моего другого проекта (слишком амбициозного для меня). И чтобы не потерять - я решил вынести его в эту небольшую утилитку.
+Небольшая утилита, которая проверяет список прокси из файла `raw.txt` и записывает рабочие прокси в `valid.txt`, а нерабочие — в `invalid.txt`.
 
-Так же есть экспериментальная функция - скрипт сам скачивает и проверяет файлы с одного репозитория. https://github.com/iplocate/free-proxy-list
-. Небольшой нюанс - многие прокси, которые в нем имеются, несмотря на то, что валидные, забанены чуть ли не везде - бесплатный сыр как говорится.
+Этот небольшой скрипт изначально был частью другого моего проекта (оказавшегося слишком амбициозным для меня). Чтобы не дать ему пропасть, я решил выделить его в отдельную небольшую утилиту.
 
-## В планах:
-- добавить возможность загрузки адресов из разных источников
-- ~~Makefile для сборки проекта в отдельную директорию~~
-- Добавить возможность парсить отдельно исходники в разных форматах (оригинал был расчитан на [`all-proxies.txt`](https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/all-proxies.txt?utm_source=chatgpt.com)). Чтобы была возможность указывать в каком формате данный источник. Или... автоматом??
+Также имеется экспериментальная функция: программа самостоятельно скачивает и проверяет списки прокси из репозитория [iplocate/free-proxy-list](https://github.com/iplocate/free-proxy-list).
 
-## Сборка
-Только одно требование - установлен Golang ни ниже **01.27.х**.
-Для быстрой сборки - выполняем команду "make" в терминале. Если утилиты make нет - выполняем команду для своей операционной системы из файла Makefile.
-После этого в проекте создастся директория build в которой будут 4 файла - raw.txt,  valid.txt, invalid.txt и proxy_checker(.exe).
+Небольшой нюанс: многие прокси из этого репозитория, несмотря на то что технически работают, заблокированы на множестве сайтов. Как говорится, бесплатный сыр бывает только в мышеловке.
 
-## What is it?
+Пока что единственная функция файла `settings.yml` — переключение языка.
 
-A small utility that checks a list of proxies from `raw.txt` and writes valid proxies to `valid.txt` and invalid ones to `invalid.txt`.
+## *В планах:*
 
-This little script originated as part of another project of mine (which turned out to be a bit too ambitious for me). Rather than letting it go to waste, I decided to turn it into a standalone utility.
+- ~~Добавить возможность загрузки адресов из разных источников.~~
+- ~~Добавить Makefile для сборки проекта в отдельную директорию.~~
+- Добавить возможность парсить исходные файлы в разных форматах (изначально программа была рассчитана исключительно на [all-proxies.txt](https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/all-proxies.txt)). В идеале пользователь сможет самостоятельно указывать формат каждого источника. Или, возможно, сделать автоматическое определение?
+- Добавить дополнительные настройки количества потоков в `settings.yml`.
 
-There's also an experimental feature that automatically downloads and checks proxy lists from this repository: [iplocate/free-proxy-list](https://github.com/iplocate/free-proxy-list).
+## *Сборка*
 
-One small caveat: many of the proxies listed there, despite being technically functional, are blocked by a lot of websites. As they say, there's no such thing as a free lunch.
+Единственное требование — установленный Go версии 1.27.x или новее.
 
-## What's planned?
+Для быстрой сборки достаточно выполнить команду `make` в терминале. Если утилита Make не установлена, можно воспользоваться соответствующей командой для своей операционной системы из файла `Makefile`.
 
-- Add support for loading proxy lists from multiple sources.
-- ~~Add a Makefile to build the project into a separate directory.~~ 
-- Add support for parsing source files in different formats (the original implementation was designed specifically for [`all-proxies.txt`](https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/all-proxies.txt?utm_source=chatgpt.com)). Ideally, users should be able to specify the format of each source. Or perhaps detect it automatically?
+После сборки в корне проекта будет создана директория `build`, содержащая следующие файлы:
 
-## Building
+- `raw.txt`
+- `valid.txt`
+- `invalid.txt`
+- `sources.txt`
+- `settings.yml`
+- Исполняемый файл `proxy_checker` (или `proxy_checker.exe`).
 
-The only requirement is **Go 1.27.x or later**.
+**Важно:** сборка под Windows пока не тестировалась, поэтому её работоспособность не гарантируется.
 
-For a quick build, simply run `make` in the terminal. If you don't have Make installed, run the appropriate command for your operating system from the `Makefile`.
+---
 
-After building, a `build` directory will be created in the project root. It will contain four files: `raw.txt`, `valid.txt`, `invalid.txt`, and the executable (`proxy_checker` or `proxy_checker.exe`, depending on your OS).
+## *What is it?*
+
+A small utility that checks a list of proxies from `raw.txt` and writes working proxies to `valid.txt` and non-working ones to `invalid.txt`.
+
+This little script originally started as part of another project of mine (which turned out to be a bit too ambitious for me). Rather than letting it go to waste, I decided to turn it into a standalone utility.
+
+There's also an experimental feature that automatically downloads and checks proxy lists from the [iplocate/free-proxy-list](https://github.com/iplocate/free-proxy-list) repository.
+
+One small caveat: although many of the proxies listed there are technically functional, they are blocked by a lot of websites. As they say, there's no such thing as a free lunch.
+
+For now, the only purpose of the `settings.yml` file is to change the application language.
+
+## *What's planned?*
+
+- ~~Add support for loading proxy lists from multiple sources.~~
+- ~~Add a Makefile to build the project into a separate directory.~~
+- Add support for parsing source files in different formats (the original implementation was designed specifically for [all-proxies.txt](https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/all-proxies.txt)). Ideally, users should be able to specify the format of each source. Alternatively, the application could detect the format automatically.
+- Add additional settings for configuring the number of threads.
+
+## *Building*
+
+The only requirement is Go 1.27.x or later.
+
+For a quick build, simply run `make` in the terminal. If Make is not installed, you can use the appropriate command for your operating system from the `Makefile`.
+
+After building, a `build` directory will be created in the project root. It will contain the following files:
+
+- `raw.txt`
+- `valid.txt`
+- `invalid.txt`
+- `sources.txt`
+- `settings.yml`
+- The executable (`proxy_checker` or `proxy_checker.exe`).
+
+**Important:** The Windows build has not been tested yet, so its functionality is not guaranteed.
