@@ -243,25 +243,27 @@ func (p *ProxyManager) rawProxyChecker(ctx context.Context, rawChan <-chan strin
 	for range DefaultThreads {
 		go func() {
 			defer wg.Done()
-			select {
-			case <-ctx.Done():
-				return
-			case proxy, isOpen := <-rawChan:
-				// А вот этот момент я упустил. Не знали (или я забыл?!) что он сойдет с ума и будет до посинения "получать" данные пустые
-				if !isOpen {
+			for {
+				select {
+				case <-ctx.Done():
 					return
-				}
-				proxyData, err := FromString(proxy)
+				case proxy, isOpen := <-rawChan:
+					// А вот этот момент я упустил. Не знали (или я забыл?!) что он сойдет с ума и будет до посинения "получать" данные пустые
+					if !isOpen {
+						return
+					}
+					proxyData, err := FromString(proxy)
 
-				if err != nil {
-					p.logger.Fail(err.Error())
+					if err != nil {
+						p.logger.Fail(err.Error())
+					}
+					fmt.Println(proxy)
+					res := proxyCheckResult{
+						valid:     rand.Intn(2) == 1,
+						proxyData: *proxyData,
+					}
+					outChan <- res
 				}
-
-				res := proxyCheckResult{
-					valid:     rand.Intn(1) == 1,
-					proxyData: *proxyData,
-				}
-				outChan <- res
 			}
 		}()
 	}
@@ -271,7 +273,7 @@ func (p *ProxyManager) rawProxyChecker(ctx context.Context, rawChan <-chan strin
 
 func (pm *ProxyManager) ProcessProxiesFile(ctx context.Context, filePath string) {
 	// зафиксировали время старта
-	//startTime := time.Now()
+	startTime := time.Now()
 
 	//var cancel context.CancelFunc
 	//defer cancel()
@@ -296,31 +298,36 @@ func (pm *ProxyManager) ProcessProxiesFile(ctx context.Context, filePath string)
 			err                                  error
 			validFileHandler, invalidFileHandler *os.File
 		)
-		validFileHandler, err = os.OpenFile(validFilePath(), os.O_WRONLY|os.O_CREATE, 0644)
+		validFileHandler, err = os.OpenFile(validFilePath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			panic(pm.__("Не могу записать в валидный файл"))
 		}
 		defer validFileHandler.Close()
 
-		invalidFileHandler, err = os.OpenFile(invalidFilePath(), os.O_WRONLY|os.O_CREATE, 0644)
+		invalidFileHandler, err = os.OpenFile(invalidFilePath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			panic(pm.__("Не могу записать в невалидный файл"))
 		}
 		defer invalidFileHandler.Close()
 
-		select {
-		case <-ctx.Done():
-			return
-		case checkedData := <-checkedProxyChan:
-			if checkedData.valid {
-				_, err = validFileHandler.WriteString(checkedData.proxyData.String() + "\n")
-				if err != nil {
-					pm.logger.Warning(pm.__("Не могу записать данные в валидный файл"))
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case checkedData, ok := <-checkedProxyChan:
+				if !ok {
+					return
 				}
-			} else {
-				_, err = invalidFileHandler.WriteString(checkedData.proxyData.String() + "\n")
-				if err != nil {
-					pm.logger.Warning(pm.__("Не могу записать данные в невалидный файл"))
+				if checkedData.valid {
+					_, err = validFileHandler.WriteString(checkedData.proxyData.String() + "\n")
+					if err != nil {
+						pm.logger.Warning(pm.__("Не могу записать данные в валидный файл"))
+					}
+				} else {
+					_, err = invalidFileHandler.WriteString(checkedData.proxyData.String() + "\n")
+					if err != nil {
+						pm.logger.Warning(pm.__("Не могу записать данные в невалидный файл"))
+					}
 				}
 			}
 		}
@@ -333,7 +340,8 @@ func (pm *ProxyManager) ProcessProxiesFile(ctx context.Context, filePath string)
 	close(checkedProxyChan) // закрыли канал чекеров
 	writerWg.Wait()         // ну записунчик должен будет закрыть по контексту поэтому просто подождем если вдруг он
 	// отстает
-	pm.logger.Info("")
+	pm.logger.Info(
+		fmt.Sprintf("Обраотано за %v", time.Since(startTime)*time.Second))
 }
 
 func getIPCheckerURL() string {
