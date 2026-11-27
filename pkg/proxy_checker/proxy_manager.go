@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -13,7 +12,7 @@ import (
 )
 
 const (
-	DefaultThreads                  = 1
+	DefaultThreads                  = 128
 	DefaultResponseTimeoutInSeconds = 2
 
 	FilesBasePath   = ""
@@ -78,128 +77,128 @@ type Logger interface {
 }
 
 // ProcessProxiesFile1 проверяет данный ему файл, который содержит необработанные данные прокси серверов.
-func (p *ProxyManager) ProcessProxiesFile1(filePath string) {
-	// зафиксировали время старта
-	startTime := time.Now()
+//func (p *ProxyManager) ProcessProxiesFile1(filePath string) {
+//	// зафиксировали время старта
+//	startTime := time.Now()
+//
+//	ctx := context.Background()
+//	var cancel context.CancelFunc
+//	ctx, cancel = context.WithCancel(ctx)
+//	defer cancel()
+//
+//	// продюсер читает прокси из файла
+//	// продюсер отправляет прокси в канал rawProxy
+//	sourceHandler, handlerErr := os.OpenFile(filePath, os.O_RDONLY, 0644)
+//	if handlerErr != nil {
+//		p.logger.Fail(handlerErr.Error())
+//		return
+//	}
+//	defer sourceHandler.Close()
+//	rawProxyChannel := make(chan string, DefaultThreads)
+//
+//	producerWg := sync.WaitGroup{}
+//	producerWg.Go(func() {
+//		p.rawProxyProducer(ctx, sourceHandler, rawProxyChannel)
+//	})
+//
+//	// worker принимает данные из канала rawProxy
+//	// отправляет в processedProxy
+//	processedProxyCh := make(chan proxyCheckResult, DefaultThreads)
+//	processersWg := sync.WaitGroup{}
+//	processersWg.Add(DefaultThreads)
+//
+//	for range DefaultThreads {
+//		go func() {
+//			p.proxyChecker(ctx, rawProxyChannel, processedProxyCh)
+//			processersWg.Done()
+//		}()
+//	}
+//
+//	// ну и consumer-writer записывает данные в резудьтирующий файл
+//	resultWriterWG := sync.WaitGroup{}
+//	resultWriterWG.Go(func() {
+//		p.resultsWriter(ctx, processedProxyCh)
+//	})
+//
+//	producerWg.Wait() // продюсер асинхронно выполняется, поэтому ждем пока что он завершится
+//	//close(processedProxyCh) // только потом закрываем канал
+//	processersWg.Wait()
+//	//close(processedProxyCh)
+//	resultWriterWG.Wait()
+//	// зафиксировали время завершения
+//	p.logger.Info(
+//		fmt.Sprintf("Файл со списком прокси был обработан за %v", time.Since(startTime)*time.Second))
+//}
 
-	ctx := context.Background()
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithCancel(ctx)
-	defer cancel()
-
-	// продюсер читает прокси из файла
-	// продюсер отправляет прокси в канал rawProxy
-	sourceHandler, handlerErr := os.OpenFile(filePath, os.O_RDONLY, 0644)
-	if handlerErr != nil {
-		p.logger.Fail(handlerErr.Error())
-		return
-	}
-	defer sourceHandler.Close()
-	rawProxyChannel := make(chan string, DefaultThreads)
-
-	producerWg := sync.WaitGroup{}
-	producerWg.Go(func() {
-		p.rawProxyProducer(ctx, sourceHandler, rawProxyChannel)
-	})
-
-	// worker принимает данные из канала rawProxy
-	// отправляет в processedProxy
-	processedProxyCh := make(chan proxyCheckResult, DefaultThreads)
-	processersWg := sync.WaitGroup{}
-	processersWg.Add(DefaultThreads)
-
-	for range DefaultThreads {
-		go func() {
-			p.proxyChecker(ctx, rawProxyChannel, processedProxyCh)
-			processersWg.Done()
-		}()
-	}
-
-	// ну и consumer-writer записывает данные в резудьтирующий файл
-	resultWriterWG := sync.WaitGroup{}
-	resultWriterWG.Go(func() {
-		p.resultsWriter(ctx, processedProxyCh)
-	})
-
-	producerWg.Wait() // продюсер асинхронно выполняется, поэтому ждем пока что он завершится
-	//close(processedProxyCh) // только потом закрываем канал
-	processersWg.Wait()
-	//close(processedProxyCh)
-	resultWriterWG.Wait()
-	// зафиксировали время завершения
-	p.logger.Info(
-		fmt.Sprintf("Файл со списком прокси был обработан за %v", time.Since(startTime)*time.Second))
-}
-
-func (p *ProxyManager) rawProxyProducer(
-	ctx context.Context,
-	fileHandler *os.File,
-	rawChan chan<- string,
-) {
-	sc := bufio.NewScanner(fileHandler)
-	defer close(rawChan)
-	for sc.Scan() {
-		select {
-		case <-ctx.Done():
-			p.logger.Fail(ctx.Err().Error())
-			return
-		case rawChan <- sc.Text():
-		}
-	}
-	return
-}
-
-func (p *ProxyManager) proxyChecker(
-	ctx context.Context,
-	inChan <-chan string,
-	outChan chan<- proxyCheckResult,
-) {
-	defer close(outChan)
-	for {
-		select {
-		case <-ctx.Done():
-		case proxyRaw, ok := <-inChan:
-			if !ok {
-				return
-			}
-			proxyData, proxyErr := FromString(proxyRaw)
-			if proxyErr != nil {
-				p.logger.Fail(proxyErr.Error())
-				break
-			} else {
-				func() { // тупо чтобы defer можно было заиспользовать и returnы
-					timeOutCtx, cancel := context.WithTimeout(ctx, time.Second*5)
-					defer cancel()
-
-					req, reqErr := http.NewRequestWithContext(
-						timeOutCtx,
-						http.MethodGet,
-						getIPCheckerURL(),
-						nil,
-					)
-
-					if reqErr != nil {
-						p.logger.Fail(reqErr.Error())
-						return
-					}
-
-					client := p.httpClient.CreateClient()
-					defer client.CloseIdleConnections()
-					client.SetProxy(proxyRaw)
-					body, err := client.DoAndReturnBody(req)
-					if err != nil {
-						return // ????
-					}
-
-					result := proxyCheckResult{}
-					result.proxyData = *proxyData
-					result.valid = strings.Contains(body, proxyRaw)
-					outChan <- result
-				}()
-			}
-		}
-	}
-}
+//func (p *ProxyManager) rawProxyProducer(
+//	ctx context.Context,
+//	fileHandler *os.File,
+//	rawChan chan<- string,
+//) {
+//	sc := bufio.NewScanner(fileHandler)
+//	defer close(rawChan)
+//	for sc.Scan() {
+//		select {
+//		case <-ctx.Done():
+//			p.logger.Fail(ctx.Err().Error())
+//			return
+//		case rawChan <- sc.Text():
+//		}
+//	}
+//	return
+//}
+//
+//func (p *ProxyManager) proxyChecker(
+//	ctx context.Context,
+//	inChan <-chan string,
+//	outChan chan<- proxyCheckResult,
+//) {
+//	defer close(outChan)
+//	for {
+//		select {
+//		case <-ctx.Done():
+//		case proxyRaw, ok := <-inChan:
+//			if !ok {
+//				return
+//			}
+//			proxyData, proxyErr := FromString(proxyRaw)
+//			if proxyErr != nil {
+//				p.logger.Fail(proxyErr.Error())
+//				break
+//			} else {
+//				func() { // тупо чтобы defer можно было заиспользовать и returnы
+//					timeOutCtx, cancel := context.WithTimeout(ctx, time.Second*5)
+//					defer cancel()
+//
+//					req, reqErr := http.NewRequestWithContext(
+//						timeOutCtx,
+//						http.MethodGet,
+//						getIPCheckerURL(),
+//						nil,
+//					)
+//
+//					if reqErr != nil {
+//						p.logger.Fail(reqErr.Error())
+//						return
+//					}
+//
+//					client := p.httpClient.CreateClient()
+//					defer client.CloseIdleConnections()
+//					client.SetProxy(proxyRaw)
+//					body, err := client.DoAndReturnBody(req)
+//					if err != nil {
+//						return // ????
+//					}
+//
+//					result := proxyCheckResult{}
+//					result.proxyData = *proxyData
+//					result.valid = strings.Contains(body, proxyRaw)
+//					outChan <- result
+//				}()
+//			}
+//		}
+//	}
+//}
 
 // sourceFileHandler обрабатывает файл и посылает каждый прокси на проверку в канал, который возвращает функция.
 func (p *ProxyManager) sourceFileHandler(ctx context.Context, path string) (chan string, *sync.WaitGroup) {
@@ -253,16 +252,42 @@ func (p *ProxyManager) rawProxyChecker(ctx context.Context, rawChan <-chan strin
 						return
 					}
 					proxyData, err := FromString(proxy)
-
 					if err != nil {
 						p.logger.Fail(err.Error())
 					}
-					fmt.Println(proxy)
-					res := proxyCheckResult{
-						valid:     rand.Intn(2) == 1,
+
+					proxyCheckRes := proxyCheckResult{
 						proxyData: *proxyData,
 					}
-					outChan <- res
+
+					c := p.httpClient.CreateClient()
+					// зачем, а главное нахуя я это делал? Ну чтобы что?
+					// один хуй я напрямую к реквесту обращаюсь. Ленб СОЛЬидить
+					c.SetProxy(proxy)
+					ctxWTimeout, canceTimeout := context.WithTimeout(ctx, time.Second*DefaultResponseTimeoutInSeconds)
+					defer canceTimeout()
+					req, erReq := http.NewRequestWithContext(ctxWTimeout, http.MethodGet, DefaultIpCheckerAPI, nil)
+					if erReq != nil {
+						p.logger.Fail(erReq.Error())
+						proxyCheckRes.valid = false
+					} else {
+						res, respErr := c.DoAndReturnBody(req)
+						c.CloseIdleConnections()
+						if respErr != nil {
+							proxyCheckRes.valid = false
+						} else {
+							isHere := strings.Contains(res, proxyData.IP)
+							if !isHere {
+								p.logger.Warning(
+									fmt.Sprintf(
+										"Ошибок нет, но вот в ответе с API проверки ip нет нужного ip (%s). %s",
+										proxyData.IP, res),
+								)
+							}
+							proxyCheckRes.valid = isHere
+						}
+					}
+					outChan <- proxyCheckRes
 				}
 			}
 		}()
@@ -349,11 +374,11 @@ func getIPCheckerURL() string {
 }
 
 func invalidFilePath() string {
-	return FilePathValid
+	return FilePathInvalid
 }
 
 func validFilePath() string {
-	return FilePathInvalid
+	return FilePathValid
 }
 
 func (p *ProxyManager) resultsWriter(
